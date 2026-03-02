@@ -2790,6 +2790,47 @@ img {
     font-weight: bold;
 }
 
+/* Бейдж скидки */
+.shop-blister-image-wrap {
+    position: relative;
+}
+
+.shop-discount-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: clamp(32px, 3.5vw, 48px);
+    height: clamp(32px, 3.5vw, 48px);
+    background: linear-gradient(135deg, #ff6b00, #ff0000);
+    color: #fff;
+    font-size: clamp(9px, 1vw, 13px);
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    clip-path: polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+    z-index: 2;
+    line-height: 1;
+}
+
+.shop-discount-badge--modal {
+    width: clamp(44px, 5vw, 64px);
+    height: clamp(44px, 5vw, 64px);
+    font-size: clamp(11px, 1.3vw, 16px);
+    top: -10px;
+    right: -10px;
+}
+
+/* Зачёркнутая старая цена */
+.shop-price-old {
+    display: inline-block;
+    margin-left: 4px;
+    font-size: 0.8em;
+    color: rgba(200, 200, 200, 0.6);
+    text-decoration: line-through;
+}
+
 /* Модальное окно товара */
 .shop-product-modal {
     position: absolute;

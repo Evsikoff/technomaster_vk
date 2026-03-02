@@ -36,6 +36,21 @@ function getTransactionType(price) {
 }
 
 /**
+ * Проверяет, активна ли скидка для блистера на текущий момент
+ * @param {object} blister
+ * @returns {boolean}
+ */
+function isDiscountActive(blister) {
+    if (!blister.discount || !blister.discount_start || !blister.discount_finish) return false;
+    const parseRuDate = function(s) {
+        var parts = s.split('.');
+        return new Date(parts[2], parts[1] - 1, parts[0]);
+    };
+    var now = new Date();
+    return parseRuDate(blister.discount_start) <= now && now < parseRuDate(blister.discount_finish);
+}
+
+/**
  * Возвращает HTML-содержимое кнопки цены
  * @param {number} price
  * @returns {string}
@@ -84,7 +99,14 @@ async function initShopDatabase() {
 
     const response = await fetch(SHOP_DB_PATH);
     const buffer = await response.arrayBuffer();
-    return new SQL.Database(new Uint8Array(buffer));
+    const db = new SQL.Database(new Uint8Array(buffer));
+
+    // Добавляем колонки скидки, если их ещё нет
+    ['discount', 'discount_start', 'discount_finish'].forEach(function(col) {
+        try { db.run('ALTER TABLE deck_rules ADD COLUMN ' + col + ' TEXT'); } catch (_) {}
+    });
+
+    return db;
 }
 
 /**
@@ -137,6 +159,14 @@ function createBlisterCard(blister) {
     img.src = 'public/img/blisters/' + blister.blister_image;
     img.alt = blister.blister_name;
     imgWrap.appendChild(img);
+
+    if (isDiscountActive(blister)) {
+        const badge = document.createElement('div');
+        badge.className = 'shop-discount-badge';
+        badge.textContent = '-' + blister.discount + '%';
+        imgWrap.appendChild(badge);
+    }
+
     card.appendChild(imgWrap);
 
     // Название
@@ -154,8 +184,17 @@ function createBlisterCard(blister) {
     // Кнопка цены
     const priceBtn = document.createElement('button');
     priceBtn.className = 'shop-price-btn ' + getPriceBtnClass(blister.blister_price);
-    priceBtn.innerHTML = getPriceLabel(blister.blister_price);
     priceBtn.type = 'button';
+
+    if (isDiscountActive(blister)) {
+        var newPrice = Math.floor(blister.blister_price * (1 - blister.discount / 100));
+        priceBtn.innerHTML =
+            newPrice + ' <span class="shop-currency-symbol" aria-label="рублей">₽</span>' +
+            ' <span class="shop-price-old">' + blister.blister_price + ' ₽</span>';
+    } else {
+        priceBtn.innerHTML = getPriceLabel(blister.blister_price);
+    }
+
     card.appendChild(priceBtn);
 
     // Клик открывает модальное окно
@@ -217,6 +256,14 @@ function openProductModal(blister) {
     img.alt = blister.blister_name;
     imageWrap.appendChild(img);
 
+    var discountActive = isDiscountActive(blister);
+    if (discountActive) {
+        var modalBadge = document.createElement('div');
+        modalBadge.className = 'shop-discount-badge shop-discount-badge--modal';
+        modalBadge.textContent = '-' + blister.discount + '%';
+        imageWrap.appendChild(modalBadge);
+    }
+
     // Текстовые данные
     nameEl.textContent = blister.blister_name;
     marketingEl.textContent = blister.blister_description || '';
@@ -226,7 +273,10 @@ function openProductModal(blister) {
     techEl.textContent = techParts.join(' \u2022 ');
 
     // CTA
-    ctaBtn.innerHTML = getCtaLabel(blister.blister_price);
+    var effectivePrice = discountActive
+        ? Math.floor(blister.blister_price * (1 - blister.discount / 100))
+        : blister.blister_price;
+    ctaBtn.innerHTML = getCtaLabel(effectivePrice);
     ctaBtn.className = 'shop-product-cta ' + getPriceBtnClass(blister.blister_price);
     ctaBtn.disabled = false;
 
@@ -371,7 +421,7 @@ async function handlePurchase(blister) {
     setModalLoading(true);
 
     try {
-        var productId = 'blister_' + blister.id;
+        var productId = 'blister_' + blister.id + (isDiscountActive(blister) ? '_discount' : '');
         var purchase = await payments.purchase({ id: productId });
 
         // Покупка совершена — consumируем
