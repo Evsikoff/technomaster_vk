@@ -919,14 +919,17 @@ async function purchaseItem(itemId) {
  * На мобильных — через VKWebAppSetViewSettings, на десктопе — Fullscreen API.
  */
 function requestFullscreen() {
-    if (isRunningInVK()) {
+    const inVK = isRunningInVK();
+    const fsElement = document.fullscreenElement || document.webkitFullscreenElement || null;
+    console.log('[Fullscreen] requestFullscreen() вызван | isVK=' + inVK + ' | document.fullscreenElement=' + (fsElement ? fsElement.tagName : 'null') + ' | caller=' + (new Error().stack.split('\n')[2] || '').trim());
+    if (inVK) {
         vkBridge.send('VKWebAppSetViewSettings', {
             status_bar_style: 'light',
             fullscreen: true
         })
-            .then(() => console.log('VK Bridge: Fullscreen activated'))
+            .then(() => console.log('[Fullscreen] VKWebAppSetViewSettings(fullscreen:true) — успешно'))
             .catch(e => {
-                console.warn('VK Bridge: Fullscreen request failed, trying Fullscreen API', e);
+                console.warn('[Fullscreen] VKWebAppSetViewSettings(fullscreen:true) — ошибка, fallback на Fullscreen API', e);
                 requestBrowserFullscreen();
             });
     } else {
@@ -939,8 +942,11 @@ function requestFullscreen() {
  */
 function requestBrowserFullscreen() {
     const elem = document.documentElement;
+    console.log('[Fullscreen] requestBrowserFullscreen() | document.fullscreenElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null'));
     if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(e => console.warn('Fullscreen API failed:', e));
+        elem.requestFullscreen()
+            .then(() => console.log('[Fullscreen] requestFullscreen() — успешно'))
+            .catch(e => console.warn('[Fullscreen] requestFullscreen() — ошибка:', e));
     } else if (elem.webkitRequestFullscreen) {
         elem.webkitRequestFullscreen();
     }
@@ -951,14 +957,17 @@ function requestBrowserFullscreen() {
  * На мобильных — через VKWebAppSetViewSettings, на десктопе — Fullscreen API.
  */
 function exitFullscreen() {
-    if (isRunningInVK()) {
+    const inVK = isRunningInVK();
+    const fsElement = document.fullscreenElement || document.webkitFullscreenElement || null;
+    console.log('[Fullscreen] exitFullscreen() вызван | isVK=' + inVK + ' | document.fullscreenElement=' + (fsElement ? fsElement.tagName : 'null') + ' | caller=' + (new Error().stack.split('\n')[2] || '').trim());
+    if (inVK) {
         vkBridge.send('VKWebAppSetViewSettings', {
             status_bar_style: 'dark',
             fullscreen: false
         })
-            .then(() => console.log('VK Bridge: Fullscreen deactivated'))
+            .then(() => console.log('[Fullscreen] VKWebAppSetViewSettings(fullscreen:false) — успешно'))
             .catch(e => {
-                console.warn('VK Bridge: Exit fullscreen failed, trying Fullscreen API', e);
+                console.warn('[Fullscreen] VKWebAppSetViewSettings(fullscreen:false) — ошибка, fallback на Fullscreen API', e);
                 exitBrowserFullscreen();
             });
     } else {
@@ -970,8 +979,11 @@ function exitFullscreen() {
  * Выходит из полноэкранного режима через стандартное Fullscreen API браузера.
  */
 function exitBrowserFullscreen() {
+    console.log('[Fullscreen] exitBrowserFullscreen() | document.fullscreenElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null'));
     if (document.exitFullscreen) {
-        document.exitFullscreen().catch(e => console.warn('Exit Fullscreen API failed:', e));
+        document.exitFullscreen()
+            .then(() => console.log('[Fullscreen] exitFullscreen() — успешно'))
+            .catch(e => console.warn('[Fullscreen] exitFullscreen() — ошибка:', e));
     } else if (document.webkitExitFullscreen) {
         document.webkitExitFullscreen();
     }

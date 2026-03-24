@@ -434,6 +434,7 @@ async function initStartScreen() {
         // Автоматический переход в полноэкранный режим при первом клике
         if (window.userCards?.requestFullscreen) {
             window.addEventListener('click', () => {
+                console.log('[StartScreen] Первый клик: запрос полноэкранного режима');
                 window.userCards.requestFullscreen();
             }, { once: true });
         }

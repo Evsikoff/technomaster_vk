@@ -293,6 +293,7 @@ function openProductModal(blister) {
     modal.classList.remove('hidden');
 
     // Выйти из полноэкранного режима при открытии модального окна
+    console.log('[ShopScreen] openProductModal("' + blister.blister_name + '"): запрос выхода из полноэкранного режима');
     if (window.userCards?.exitFullscreen) {
         window.userCards.exitFullscreen();
     }
@@ -307,6 +308,7 @@ function closeProductModal() {
     shopScreenState.selectedBlister = null;
 
     // Вернуться в полноэкранный режим при закрытии модального окна
+    console.log('[ShopScreen] closeProductModal(): запрос полноэкранного режима');
     if (window.userCards?.requestFullscreen) {
         window.userCards.requestFullscreen();
     }
@@ -628,6 +630,7 @@ async function initShopScreen() {
         }
 
         // Активируем полноэкранный режим при входе в магазин
+        console.log('[ShopScreen] initShopScreen: запрос полноэкранного режима');
         if (window.userCards?.requestFullscreen) {
             window.userCards.requestFullscreen();
         }
