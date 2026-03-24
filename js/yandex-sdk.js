@@ -45,29 +45,51 @@ let initPromiseInstance = null;
 let isInitialized = false;
 
 /**
- * Проверяет, запущено ли приложение в Одноклассниках (по URL-параметру vk_client).
+ * Проверяет, запущено ли приложение в Одноклассниках (по URL-параметру vk_client или sessionStorage).
  * @returns {boolean}
  */
 function checkIsOdnoklassniki() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
-        const vkClient = urlParams.get('vk_client');
-        return vkClient === 'ok';
+        if (urlParams.get('vk_client') === 'ok') {
+            return true;
+        }
+        // Fallback: проверяем sessionStorage (при навигации между страницами)
+        return sessionStorage.getItem(VK_SESSION_OK_FLAG) === '1';
     } catch (e) {
         return false;
     }
 }
 
+const VK_SESSION_FLAG = 'technomaster.vk.active';
+const VK_SESSION_OK_FLAG = 'technomaster.vk.isOK';
+
 /**
  * Проверяет наличие признаков VK среды.
+ * Проверяет URL-параметры, а также sessionStorage (для навигации между страницами).
  * @returns {boolean}
  */
 function hasVKIndicators() {
     try {
         const urlParams = new URLSearchParams(window.location.search);
-        // VK передаёт параметры vk_user_id, vk_app_id и т.д.
-        return urlParams.has('vk_user_id') || urlParams.has('vk_app_id') ||
+        const hasUrlParams = urlParams.has('vk_user_id') || urlParams.has('vk_app_id') ||
                urlParams.has('sign') || urlParams.has('vk_client');
+
+        if (hasUrlParams) {
+            // Сохраняем флаг VK-среды и платформу в sessionStorage для последующих страниц
+            sessionStorage.setItem(VK_SESSION_FLAG, '1');
+            if (urlParams.get('vk_client') === 'ok') {
+                sessionStorage.setItem(VK_SESSION_OK_FLAG, '1');
+            }
+            return true;
+        }
+
+        // При навигации между страницами URL-параметры теряются — проверяем sessionStorage
+        if (sessionStorage.getItem(VK_SESSION_FLAG) === '1') {
+            return true;
+        }
+
+        return false;
     } catch (e) {
         return false;
     }

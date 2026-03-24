@@ -59,7 +59,7 @@ function getPriceLabel(price) {
     const type = getTransactionType(price);
     if (type === TRANSACTION_TYPE.INTERSTITIAL) return 'Бесплатно';
     if (type === TRANSACTION_TYPE.REWARDED) return 'За видео';
-    return price + ' <span class="shop-currency-symbol" aria-label="рублей">₽</span>';
+    return price + ' <span class="shop-currency-symbol" aria-label="голосов">Гол.</span>';
 }
 
 /**
@@ -83,7 +83,7 @@ function getCtaLabel(price) {
     const type = getTransactionType(price);
     if (type === TRANSACTION_TYPE.INTERSTITIAL) return 'Смотреть рекламу';
     if (type === TRANSACTION_TYPE.REWARDED) return 'Смотреть видео';
-    return 'Купить за ' + price + ' <span class="shop-currency-symbol" aria-label="рублей">₽</span>';
+    return 'Купить за ' + price + ' <span class="shop-currency-symbol" aria-label="голосов">Гол.</span>';
 }
 
 // ========================================
@@ -189,8 +189,8 @@ function createBlisterCard(blister) {
     if (isDiscountActive(blister)) {
         var newPrice = Math.floor(blister.blister_price * (1 - blister.discount / 100));
         priceBtn.innerHTML =
-            newPrice + ' <span class="shop-currency-symbol" aria-label="рублей">₽</span>' +
-            ' <span class="shop-price-old">' + blister.blister_price + ' ₽</span>';
+            newPrice + ' <span class="shop-currency-symbol" aria-label="голосов">Гол.</span>' +
+            ' <span class="shop-price-old">' + blister.blister_price + ' Гол.</span>';
     } else {
         priceBtn.innerHTML = getPriceLabel(blister.blister_price);
     }
