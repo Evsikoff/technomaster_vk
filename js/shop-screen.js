@@ -21,7 +21,8 @@ const shopScreenState = {
     db: null,
     blisters: [],
     payments: null,
-    selectedBlister: null
+    selectedBlister: null,
+    pendingFullscreenExit: null
 };
 
 /**
@@ -292,10 +293,28 @@ function openProductModal(blister) {
 
     modal.classList.remove('hidden');
 
-    // Выйти из полноэкранного режима при открытии модального окна
-    console.log('[ShopScreen] openProductModal("' + blister.blister_name + '"): запрос выхода из полноэкранного режима');
-    if (window.userCards?.exitFullscreen) {
-        window.userCards.exitFullscreen();
+    // Выйти из полноэкранного режима при открытии модального окна.
+    // Браузерный exitFullscreen работает только если уже в fullscreen.
+    // Если нет — используем жест текущего клика чтобы войти и сразу выйти.
+    console.log('[ShopScreen] openProductModal("' + blister.blister_name + '"): fsElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null'));
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        console.log('[ShopScreen] openProductModal: в fullscreen — выходим');
+        window.userCards?.exitFullscreen();
+    } else if (window.userCards?.requestFullscreen && window.userCards?.exitFullscreen) {
+        console.log('[ShopScreen] openProductModal: не в fullscreen — входим через жест, затем сразу выйдем');
+        const pendingExit = () => {
+            document.removeEventListener('fullscreenchange', pendingExit);
+            document.removeEventListener('webkitfullscreenchange', pendingExit);
+            shopScreenState.pendingFullscreenExit = null;
+            if (document.fullscreenElement || document.webkitFullscreenElement) {
+                console.log('[ShopScreen] fullscreenchange: вошли — выходим');
+                window.userCards.exitFullscreen();
+            }
+        };
+        shopScreenState.pendingFullscreenExit = pendingExit;
+        document.addEventListener('fullscreenchange', pendingExit);
+        document.addEventListener('webkitfullscreenchange', pendingExit);
+        window.userCards.requestFullscreen();
     }
 }
 
@@ -306,6 +325,14 @@ function closeProductModal() {
     const modal = document.getElementById('shopProductModal');
     modal.classList.add('hidden');
     shopScreenState.selectedBlister = null;
+
+    // Отменяем отложенный выход из fullscreen, если успели закрыть до его активации
+    if (shopScreenState.pendingFullscreenExit) {
+        document.removeEventListener('fullscreenchange', shopScreenState.pendingFullscreenExit);
+        document.removeEventListener('webkitfullscreenchange', shopScreenState.pendingFullscreenExit);
+        shopScreenState.pendingFullscreenExit = null;
+        console.log('[ShopScreen] closeProductModal(): отменён pendingFullscreenExit');
+    }
 
     // Вернуться в полноэкранный режим при закрытии модального окна
     console.log('[ShopScreen] closeProductModal(): запрос полноэкранного режима');
@@ -627,12 +654,6 @@ async function initShopScreen() {
         // Ждём готовности контроллера хранилища
         if (window.userCards && window.userCards.whenReady) {
             await window.userCards.whenReady();
-        }
-
-        // Активируем полноэкранный режим при входе в магазин
-        console.log('[ShopScreen] initShopScreen: запрос полноэкранного режима');
-        if (window.userCards?.requestFullscreen) {
-            window.userCards.requestFullscreen();
         }
 
         // Инициализируем рендерер карт и БД параллельно
