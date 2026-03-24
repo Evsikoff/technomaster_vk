@@ -136,25 +136,23 @@ async function checkVKEnvironment() {
 
         const data = await Promise.race([initPromise, timeoutPromise]);
 
-        if (data.result) {
-            console.log('VK Bridge: Успешно инициализирован.');
-            isVKEnvironment = true;
-            isOdnoklassnikiPlatform = checkIsOdnoklassniki();
-            console.log('VK Bridge: Платформа:', isOdnoklassnikiPlatform ? 'Одноклассники' : 'ВКонтакте');
+        // VKWebAppInit считается успешным если промис разрешился без исключения.
+        // В некоторых окружениях VK Bridge возвращает {} или {result: undefined},
+        // поэтому не проверяем data.result — само разрешение промиса достаточно.
+        console.log('VK Bridge: Успешно инициализирован. Ответ:', JSON.stringify(data));
+        isVKEnvironment = true;
+        isOdnoklassnikiPlatform = checkIsOdnoklassniki();
+        console.log('VK Bridge: Платформа:', isOdnoklassnikiPlatform ? 'Одноклассники' : 'ВКонтакте');
 
-            // Подписываемся на обновления конфигурации экрана
-            vkBridge.subscribe((e) => {
-                if (e.detail.type === 'VKWebAppUpdateConfig') {
-                    const configData = e.detail.data;
-                    console.log('VK Bridge: Новая конфигурация экрана:', configData);
-                }
-            });
+        // Подписываемся на обновления конфигурации экрана
+        vkBridge.subscribe((e) => {
+            if (e.detail.type === 'VKWebAppUpdateConfig') {
+                const configData = e.detail.data;
+                console.log('VK Bridge: Новая конфигурация экрана:', configData);
+            }
+        });
 
-            return true;
-        }
-
-        isVKEnvironment = false;
-        return false;
+        return true;
 
     } catch (error) {
         const errorMessage = error?.message || String(error);
