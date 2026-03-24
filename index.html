@@ -7,30 +7,8 @@
     <link rel="stylesheet" href="css/styles.css">
     <script src="js/vendor/sql-wasm.js"></script>
     <script src="js/sql-init.js"></script>
-    <!-- Yandex Games SDK -->
-    <script src="/sdk.js"></script>
-    <script>
-        // Определяем переменную окружения для контроллера хранилища
-        // Если мы НЕ в iframe Яндекс Игр - используем localStorage
-        (function() {
-            try {
-                // В iframe мы всегда предполагаем возможность наличия Яндекс SDK.
-                // Реферер проверяем только как дополнительный признак, но не как обязательный,
-                // так как при навигации внутри iframe реферер меняется на наш собственный домен.
-                var isInIframe = (window !== window.top);
-                var isYandexHost = window.location.hostname.endsWith('yandex.ru') ||
-                    window.location.hostname.endsWith('yandex.net');
-
-                if (!isInIframe && !isYandexHost) {
-                    window.userDataStorage = 'localStorage';
-                    console.log('ENV: userDataStorage = "localStorage" (не Яндекс Игры)');
-                }
-            } catch (e) {
-                // При ошибке доступа к window.top (cross-origin) - мы точно в iframe
-                console.log('ENV: Возможно в iframe Яндекс Игр');
-            }
-        })();
-    </script>
+    <!-- VK Bridge SDK -->
+    <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 </head>
 <body class="start-screen">
     <!-- Загрузочный экран -->

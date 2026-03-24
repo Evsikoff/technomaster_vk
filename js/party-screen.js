@@ -1359,21 +1359,18 @@ async function initPartyScreen() {
                 window.location.href = 'index.html';
             }
 
-            const ysdk = window.userCards?.getCachedYsdk?.();
-            if (!ysdk) {
+            if (!window.userCards?.isRunningInVK?.()) {
                 performReturn();
                 return;
             }
 
-            ysdk.adv.showFullscreenAdv({
-                callbacks: {
-                    onClose: function(wasShown) {
-                        performReturn();
-                    },
-                    onError: function(error) {
-                        console.error('PartyScreen: Ошибка полноэкранной рекламы:', error);
-                        performReturn();
-                    }
+            window.userCards.showInterstitialAd({
+                onClose: function(wasShown) {
+                    performReturn();
+                },
+                onError: function(error) {
+                    console.error('PartyScreen: Ошибка полноэкранной рекламы:', error);
+                    performReturn();
                 }
             });
         });

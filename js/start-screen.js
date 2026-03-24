@@ -307,72 +307,13 @@ async function generateAndSaveBlisterAtStartup(blister) {
 
 /**
  * Проверяет и обрабатывает незавершённые инап-покупки при старте игры.
- * Вызывается после инициализации SDK, до показа экрана.
+ * В VK покупки валидируются через серверный callback,
+ * поэтому клиентская проверка зависших покупок не требуется.
  */
 async function checkPendingPurchasesAtStartup() {
-    const ysdk = window.userCards.getCachedYsdk();
-    if (!ysdk) return;
-
-    let payments;
-    try {
-        payments = await ysdk.getPayments({ signed: false });
-    } catch (err) {
-        console.warn('StartScreen: Не удалось инициализировать покупки для проверки зависших:', err);
-        return;
-    }
-
-    let purchases;
-    try {
-        purchases = await payments.getPurchases();
-    } catch (err) {
-        console.warn('StartScreen: Ошибка получения зависших покупок:', err);
-        return;
-    }
-
-    if (!purchases || purchases.length === 0) return;
-
-    // Загружаем блистеры из БД
-    let blisters = [];
-    try {
-        const SQL = await SqlLoader.init();
-        const response = await fetch(OPPONENTS_DB_PATH);
-        const buffer = await response.arrayBuffer();
-        const db = new SQL.Database(new Uint8Array(buffer));
-
-        const result = db.exec(
-            "SELECT * FROM deck_rules WHERE blister_name IS NOT NULL AND blister_name != '' ORDER BY blister_price ASC"
-        );
-        if (result.length > 0) {
-            const columns = result[0].columns;
-            blisters = result[0].values.map(function(row) {
-                const obj = {};
-                columns.forEach(function(col, i) { obj[col] = row[i]; });
-                return obj;
-            });
-        }
-    } catch (err) {
-        console.error('StartScreen: Ошибка загрузки блистеров при проверке покупок:', err);
-        return;
-    }
-
-    for (let i = 0; i < purchases.length; i++) {
-        const p = purchases[i];
-        if (!p.productID || !p.productID.startsWith('blister_')) continue;
-
-        const deckRuleId = parseInt(p.productID.replace('blister_', ''), 10);
-        if (isNaN(deckRuleId)) continue;
-
-        const blister = blisters.find(function(b) { return b.id === deckRuleId; });
-        if (!blister) continue;
-
-        try {
-            await payments.consumePurchase(p.purchaseToken);
-            await generateAndSaveBlisterAtStartup(blister);
-            console.log('StartScreen: Обработана зависшая покупка:', p.productID);
-        } catch (err) {
-            console.error('StartScreen: Ошибка обработки зависшей покупки:', p.productID, err);
-        }
-    }
+    // В VK нет клиентского API getPurchases/consumePurchase.
+    // Зависшие покупки обрабатываются серверным callback (vktrade.fly.dev).
+    console.log('StartScreen: Проверка зависших покупок не требуется (VK callback).');
 }
 
 /**
@@ -490,40 +431,11 @@ async function initStartScreen() {
 
         renderOpponents();
 
-        // Сигнализируем SDK о готовности
-        if (window.userCards?.getCachedYsdk) {
-            const ysdk = window.userCards.getCachedYsdk();
-            if (ysdk) {
-                // Автоматический переход в полноэкранный режим при первом клике
-                if (ysdk.screen && ysdk.screen.fullscreen) {
-                    const requestFullscreen = () => {
-                        const fs = ysdk.screen.fullscreen;
-                        if (fs.status === fs.STATUS_OFF) {
-                            fs.request()
-                                .then(() => console.log('Yandex Games: Fullscreen activated'))
-                                .catch(e => console.warn('Yandex Games: Fullscreen request failed', e));
-                        }
-                    };
-                    window.addEventListener('click', requestFullscreen, { once: true });
-                }
-
-                if (ysdk.features?.LoadingAPI) {
-                    ysdk.features.LoadingAPI.ready();
-                }
-                // Вызов i18n.lang с параметром ru, как просил пользователь
-                if (ysdk.environment?.i18n) {
-                    try {
-                        // Пытаемся вызвать как функцию, если это предусмотрено специфической версией/требованием
-                        if (typeof ysdk.environment.i18n.lang === 'function') {
-                            ysdk.environment.i18n.lang('ru');
-                        } else {
-                            ysdk.environment.i18n.lang = 'ru';
-                        }
-                    } catch (e) {
-                        console.warn('Не удалось установить i18n.lang(ru):', e);
-                    }
-                }
-            }
+        // Автоматический переход в полноэкранный режим при первом клике
+        if (window.userCards?.requestFullscreen) {
+            window.addEventListener('click', () => {
+                window.userCards.requestFullscreen();
+            }, { once: true });
         }
 
         // Убираем загрузочный экран перед снятием блокировщика

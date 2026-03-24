@@ -206,7 +206,8 @@ function createBlisterCard(blister) {
 }
 
 /**
- * Отрисовка сетки блистеров
+ * Отрисовка сетки блистеров.
+ * На Одноклассниках скрываем платные блистеры (IAP).
  * @param {Array} blisters
  */
 function renderShopGrid(blisters) {
@@ -215,7 +216,13 @@ function renderShopGrid(blisters) {
 
     grid.innerHTML = '';
 
-    if (blisters.length === 0) {
+    // На Одноклассниках фильтруем платные товары
+    const isOK = window.userCards.isRunningInOK();
+    const filteredBlisters = isOK
+        ? blisters.filter(b => getTransactionType(b.blister_price) !== TRANSACTION_TYPE.PURCHASE)
+        : blisters;
+
+    if (filteredBlisters.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-message';
         empty.textContent = 'Нет доступных товаров.';
@@ -223,7 +230,7 @@ function renderShopGrid(blisters) {
         return;
     }
 
-    blisters.forEach(blister => {
+    filteredBlisters.forEach(blister => {
         const card = createBlisterCard(blister);
         grid.appendChild(card);
     });
@@ -339,28 +346,23 @@ function handleCtaClick() {
  * @param {object} blister
  */
 function handleInterstitialAd(blister) {
-    const ysdk = window.userCards.getCachedYsdk();
-
-    if (!ysdk) {
-        // Не на Яндекс Играх — выдаём сразу
-        console.log('ShopScreen: SDK недоступен, выдаём блистер без рекламы.');
+    if (!window.userCards.isRunningInVK()) {
+        console.log('ShopScreen: VK недоступен, выдаём блистер без рекламы.');
         processBlisterPurchase(blister);
         return;
     }
 
     setModalLoading(true);
 
-    ysdk.adv.showFullscreenAdv({
-        callbacks: {
-            onClose: function(wasShown) {
-                setModalLoading(false);
-                processBlisterPurchase(blister);
-            },
-            onError: function(error) {
-                setModalLoading(false);
-                console.error('ShopScreen: Ошибка рекламы:', error);
-                alert('Не удалось загрузить рекламу. Попробуйте позже.');
-            }
+    window.userCards.showInterstitialAd({
+        onClose: function(wasShown) {
+            setModalLoading(false);
+            processBlisterPurchase(blister);
+        },
+        onError: function(error) {
+            setModalLoading(false);
+            console.error('ShopScreen: Ошибка рекламы:', error);
+            alert('Не удалось загрузить рекламу. Попробуйте позже.');
         }
     });
 }
@@ -370,50 +372,37 @@ function handleInterstitialAd(blister) {
  * @param {object} blister
  */
 function handleRewardedVideo(blister) {
-    const ysdk = window.userCards.getCachedYsdk();
-
-    if (!ysdk) {
-        // Не на Яндекс Играх — выдаём сразу
-        console.log('ShopScreen: SDK недоступен, выдаём блистер без видео.');
+    if (!window.userCards.isRunningInVK()) {
+        console.log('ShopScreen: VK недоступен, выдаём блистер без видео.');
         processBlisterPurchase(blister);
         return;
     }
 
     setModalLoading(true);
-    var isRewardEarned = false;
 
-    ysdk.adv.showRewardedVideo({
-        callbacks: {
-            onOpen: function() {
-                // Приостановить звуки (если есть)
-            },
-            onRewarded: function() {
-                isRewardEarned = true;
-            },
-            onClose: function() {
-                setModalLoading(false);
-                if (isRewardEarned) {
-                    processBlisterPurchase(blister);
-                }
-            },
-            onError: function(error) {
-                setModalLoading(false);
-                console.error('ShopScreen: Ошибка видео:', error);
-                alert('Не удалось загрузить видео. Попробуйте позже.');
-            }
+    window.userCards.showRewardedAd({
+        onRewarded: function() {
+            processBlisterPurchase(blister);
+        },
+        onClose: function() {
+            setModalLoading(false);
+        },
+        onError: function(error) {
+            setModalLoading(false);
+            console.error('ShopScreen: Ошибка видео:', error);
+            alert('Не удалось загрузить видео. Попробуйте позже.');
         }
     });
 }
 
 /**
  * Сценарий: Инап-покупка (price > 0)
+ * Использует VKWebAppShowOrderBox. ID товаров сохраняются прежними.
  * @param {object} blister
  */
 async function handlePurchase(blister) {
-    const payments = shopScreenState.payments;
-
-    if (!payments) {
-        console.warn('ShopScreen: Покупки недоступны.');
+    if (!window.userCards.isRunningInVK() || window.userCards.isRunningInOK()) {
+        console.warn('ShopScreen: Покупки недоступны на данной платформе.');
         alert('Покупки недоступны в данном окружении.');
         return;
     }
@@ -422,17 +411,12 @@ async function handlePurchase(blister) {
 
     try {
         var productId = 'blister_' + blister.id + (isDiscountActive(blister) ? '_discount' : '');
-        var purchase = await payments.purchase({ id: productId });
+        var result = await window.userCards.purchaseItem(productId);
 
-        // Покупка совершена — consumируем
-        try {
-            await payments.consumePurchase(purchase.purchaseToken);
+        if (result.success) {
+            console.log('ShopScreen: Покупка успешна, order_id:', result.orderId);
             setModalLoading(false);
             processBlisterPurchase(blister);
-        } catch (consumeErr) {
-            setModalLoading(false);
-            console.error('ShopScreen: Ошибка consume:', consumeErr);
-            alert('Покупка прошла, но произошла ошибка обработки. Товар будет выдан при следующем запуске.');
         }
     } catch (err) {
         setModalLoading(false);
@@ -441,38 +425,14 @@ async function handlePurchase(blister) {
 }
 
 /**
- * Проверка необработанных покупок при старте
+ * Проверка необработанных покупок при старте.
+ * В VK покупки валидируются через серверный callback (vktrade.fly.dev),
+ * поэтому клиентская проверка зависших покупок не требуется.
  */
 async function checkPendingPurchases() {
-    const payments = shopScreenState.payments;
-    if (!payments) return;
-
-    try {
-        var purchases = await payments.getPurchases();
-        if (!purchases || purchases.length === 0) return;
-
-        for (var i = 0; i < purchases.length; i++) {
-            var p = purchases[i];
-            if (p.productID && p.productID.startsWith('blister_')) {
-                var deckRuleId = parseInt(p.productID.replace('blister_', ''), 10);
-                if (isNaN(deckRuleId)) continue;
-
-                // Найти блистер по id
-                var blister = shopScreenState.blisters.find(function(b) { return b.id === deckRuleId; });
-                if (!blister) continue;
-
-                try {
-                    await payments.consumePurchase(p.purchaseToken);
-                    console.log('ShopScreen: Обработана зависшая покупка:', p.productID);
-                    await generateAndSaveBlister(blister);
-                } catch (consumeErr) {
-                    console.error('ShopScreen: Ошибка consume зависшей покупки:', consumeErr);
-                }
-            }
-        }
-    } catch (err) {
-        console.error('ShopScreen: Ошибка проверки зависших покупок:', err);
-    }
+    // В VK нет клиентского API getPurchases/consumePurchase.
+    // Зависшие покупки обрабатываются серверным callback.
+    console.log('ShopScreen: Проверка зависших покупок не требуется (VK callback).');
 }
 
 // ========================================
@@ -692,22 +652,22 @@ async function initShopScreen() {
 }
 
 /**
- * Инициализация системы покупок
+ * Инициализация системы покупок.
+ * В VK покупки осуществляются через VKWebAppShowOrderBox напрямую,
+ * без предварительной инициализации payment-объекта.
  */
 async function initPayments() {
-    var ysdk = window.userCards.getCachedYsdk();
-    if (!ysdk) {
-        console.log('ShopScreen: SDK недоступен, покупки отключены.');
+    if (!window.userCards.isRunningInVK()) {
+        console.log('ShopScreen: VK недоступен, покупки отключены.');
         return;
     }
 
-    try {
-        shopScreenState.payments = await ysdk.getPayments({ signed: false });
-        console.log('ShopScreen: Система покупок инициализирована.');
-    } catch (err) {
-        console.warn('ShopScreen: Не удалось инициализировать покупки:', err);
-        shopScreenState.payments = null;
+    if (window.userCards.isRunningInOK()) {
+        console.log('ShopScreen: Платформа Одноклассники — покупки отключены.');
+        return;
     }
+
+    console.log('ShopScreen: Система покупок VK доступна.');
 }
 
 /**

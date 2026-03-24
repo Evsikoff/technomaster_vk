@@ -1,15 +1,15 @@
 /**
- * Yandex Games SDK integration helpers.
+ * VK Bridge integration helpers.
  * Контроллер хранилища пользовательских данных.
- * @typedef {import('ysdk').SDK} SDK
- * @typedef {import('ysdk').Player} Player
+ * Замена Yandex Games SDK на VK Bridge.
  */
 
 const USER_DATA_STORAGE_KEY = 'technomaster.userData';
+const VK_STORAGE_KEY = 'gameState';
 
 /**
  * Глобальная переменная типа хранилища данных.
- * Значения: "yandexCloud" | "localStorage"
+ * Значения: "vkStorage" | "localStorage"
  * @type {string}
  */
 let userDataStorage = 'localStorage';
@@ -21,16 +21,16 @@ let userDataStorage = 'localStorage';
 let cachedUserData = null;
 
 /**
- * Кэшированный результат проверки среды Яндекс Игр.
+ * Кэшированный результат проверки среды VK.
  * @type {boolean|null}
  */
-let isYandexGamesEnvironment = null;
+let isVKEnvironment = null;
 
 /**
- * Кэшированный экземпляр Yandex SDK.
- * @type {SDK|null}
+ * Флаг: запущено ли приложение в Одноклассниках.
+ * @type {boolean}
  */
-let cachedYsdk = null;
+let isOdnoklassnikiPlatform = false;
 
 /**
  * Promise инициализации контроллера.
@@ -45,112 +45,142 @@ let initPromiseInstance = null;
 let isInitialized = false;
 
 /**
- * Быстрая синхронная проверка признаков Яндекс Игр (без гарантии).
+ * Проверяет, запущено ли приложение в Одноклассниках (по URL-параметру vk_client).
  * @returns {boolean}
  */
-function hasYandexGamesIndicators() {
+function checkIsOdnoklassniki() {
     try {
-        // Проверяем хост
-        const host = typeof window !== 'undefined' ? window.location.hostname : '';
-        const looksLikeYandexHost = host.endsWith('yandex.ru') || host.endsWith('yandex.net');
-
-        if (looksLikeYandexHost) {
-            return true;
-        }
-
-        // Проверяем, запущены ли мы в iframe.
-        // В Яндекс Играх приложение всегда работает в iframe.
-        const isInIframe = window !== window.top;
-        if (isInIframe) {
-            return true;
-        }
-
-        // Проверяем реферер (для первого входа)
-        const referrer = typeof document !== 'undefined' ? document.referrer : '';
-        const hasYandexReferrer = referrer.includes('yandex.ru') || referrer.includes('yandex.net');
-
-        return hasYandexReferrer;
+        const urlParams = new URLSearchParams(window.location.search);
+        const vkClient = urlParams.get('vk_client');
+        return vkClient === 'ok';
     } catch (e) {
         return false;
     }
 }
 
 /**
- * Проверяет, запущена ли игра через iframe в сервисе Яндекс Игры.
- * Сначала проверяет глобальную переменную userDataStorage.
+ * Проверяет наличие признаков VK среды.
+ * @returns {boolean}
+ */
+function hasVKIndicators() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        // VK передаёт параметры vk_user_id, vk_app_id и т.д.
+        return urlParams.has('vk_user_id') || urlParams.has('vk_app_id') ||
+               urlParams.has('sign') || urlParams.has('vk_client');
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Проверяет, запущена ли игра в среде VK.
+ * Инициализирует VK Bridge если доступен.
  * @returns {Promise<boolean>}
  */
-async function checkYandexGamesEnvironment() {
-    // Возвращаем кэшированный результат, если уже проверяли
-    if (isYandexGamesEnvironment !== null) {
-        return isYandexGamesEnvironment;
+async function checkVKEnvironment() {
+    if (isVKEnvironment !== null) {
+        return isVKEnvironment;
     }
 
-    // Проверяем глобальную переменную окружения userDataStorage
+    // Проверяем глобальную переменную окружения
     if (typeof window !== 'undefined' && window.userDataStorage === 'localStorage') {
-        console.log('Yandex Games: Найдена переменная окружения userDataStorage = "localStorage".');
-        console.log('Yandex Games: Принудительно используется localStorage.');
-        isYandexGamesEnvironment = false;
+        console.log('VK Bridge: Найдена переменная окружения userDataStorage = "localStorage".');
+        isVKEnvironment = false;
         return false;
     }
 
-    // Проверяем наличие SDK
-    if (typeof window === 'undefined' || typeof window.YaGames?.init !== 'function') {
-        console.log('Yandex Games: SDK не найден на странице.');
-        isYandexGamesEnvironment = false;
+    // Проверяем наличие VK Bridge
+    if (typeof window === 'undefined' || typeof vkBridge === 'undefined') {
+        console.log('VK Bridge: SDK не найден на странице.');
+        isVKEnvironment = false;
         return false;
     }
 
-    // SDK есть, но нужно проверить, работает ли он реально
-    // (ошибка "No parent to post message" означает, что нет родительского iframe)
+    // Проверяем URL-параметры VK
+    if (!hasVKIndicators()) {
+        console.log('VK Bridge: URL-параметры VK не обнаружены.');
+        isVKEnvironment = false;
+        return false;
+    }
+
     try {
-        console.log('Yandex Games: Попытка инициализации SDK...');
+        console.log('VK Bridge: Попытка инициализации...');
 
-        // Устанавливаем таймаут на инициализацию (5 секунд)
-        // Инициализация с параметром signed: false (по умолчанию)
-        const initPromise = window.YaGames.init({ signed: false });
+        const initPromise = vkBridge.send('VKWebAppInit');
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('SDK init timeout')), 5000);
+            setTimeout(() => reject(new Error('VK Bridge init timeout')), 5000);
         });
 
-        cachedYsdk = await Promise.race([initPromise, timeoutPromise]);
+        const data = await Promise.race([initPromise, timeoutPromise]);
 
-        // Если дошли сюда - SDK успешно инициализирован
-        console.log('Yandex Games: SDK успешно инициализирован. Игра запущена на Яндекс Играх.');
-        isYandexGamesEnvironment = true;
-        return true;
+        if (data.result) {
+            console.log('VK Bridge: Успешно инициализирован.');
+            isVKEnvironment = true;
+            isOdnoklassnikiPlatform = checkIsOdnoklassniki();
+            console.log('VK Bridge: Платформа:', isOdnoklassnikiPlatform ? 'Одноклассники' : 'ВКонтакте');
+
+            // Подписываемся на обновления конфигурации экрана
+            vkBridge.subscribe((e) => {
+                if (e.detail.type === 'VKWebAppUpdateConfig') {
+                    const configData = e.detail.data;
+                    console.log('VK Bridge: Новая конфигурация экрана:', configData);
+                }
+            });
+
+            return true;
+        }
+
+        isVKEnvironment = false;
+        return false;
 
     } catch (error) {
-        // Ошибка инициализации - не на Яндекс Играх
         const errorMessage = error?.message || String(error);
-        console.log(`Yandex Games: Ошибка инициализации SDK: "${errorMessage}"`);
-        console.log('Yandex Games: Игра запущена НЕ на Яндекс Играх.');
-        isYandexGamesEnvironment = false;
-        cachedYsdk = null;
+        console.log(`VK Bridge: Ошибка инициализации: "${errorMessage}"`);
+        isVKEnvironment = false;
         return false;
     }
 }
 
 /**
  * Синхронная проверка (использует кэшированный результат).
- * ВАЖНО: Вызывать только после checkYandexGamesEnvironment()!
+ * ВАЖНО: Вызывать только после checkVKEnvironment()!
  * @returns {boolean}
  */
-function isRunningInYandexGames() {
-    if (isYandexGamesEnvironment !== null) {
-        return isYandexGamesEnvironment;
+function isRunningInVK() {
+    if (isVKEnvironment !== null) {
+        return isVKEnvironment;
     }
-    // Если ещё не проверяли асинхронно - возвращаем false по умолчанию
-    console.warn('isRunningInYandexGames: вызван до асинхронной проверки, возвращаю false.');
+    console.warn('isRunningInVK: вызван до асинхронной проверки, возвращаю false.');
     return false;
 }
 
 /**
- * Возвращает кэшированный экземпляр Yandex SDK (если доступен).
- * @returns {SDK|null}
+ * Возвращает true, если приложение запущено в Одноклассниках.
+ * @returns {boolean}
+ */
+function isRunningInOK() {
+    return isOdnoklassnikiPlatform;
+}
+
+// ========================================
+// Обратная совместимость: алиасы для Yandex API
+// ========================================
+
+/**
+ * @deprecated Используйте isRunningInVK()
+ */
+function isRunningInYandexGames() {
+    return isRunningInVK();
+}
+
+/**
+ * @deprecated VK Bridge не требует кэширования SDK-объекта.
+ * Возвращает объект-заглушку для обратной совместимости или null.
+ * @returns {null}
  */
 function getCachedYsdk() {
-    return cachedYsdk;
+    return null;
 }
 
 /**
@@ -171,40 +201,30 @@ function createEmptyUserDataStructure() {
  */
 function createInitialUserDataStructure() {
     const data = createEmptyUserDataStructure();
-
-    // Добавляем первый cardholder для игрока
     data.cardholders.push({
         id: 1,
         player: true,
         opponent_id: null
     });
-
     return data;
 }
 
 /**
  * Валидирует структуру данных пользователя.
- * @param {unknown} data - Данные для проверки
+ * @param {unknown} data
  * @returns {boolean}
  */
 function isValidUserDataStructure(data) {
-    if (!data || typeof data !== 'object') {
-        return false;
-    }
-
-    // Проверяем наличие основных массивов
-    if (!Array.isArray(data.cardholders)) {
-        return false;
-    }
-    if (!Array.isArray(data.cards)) {
-        return false;
-    }
-    if (!Array.isArray(data.parties)) {
-        return false;
-    }
-
+    if (!data || typeof data !== 'object') return false;
+    if (!Array.isArray(data.cardholders)) return false;
+    if (!Array.isArray(data.cards)) return false;
+    if (!Array.isArray(data.parties)) return false;
     return true;
 }
+
+// ========================================
+// localStorage
+// ========================================
 
 /**
  * Получает данные пользователя из localStorage.
@@ -213,14 +233,10 @@ function isValidUserDataStructure(data) {
 function getUserDataFromLocalStorage() {
     try {
         const storedData = localStorage.getItem(USER_DATA_STORAGE_KEY);
-        if (!storedData) {
-            return null;
-        }
+        if (!storedData) return null;
 
         const parsed = JSON.parse(storedData);
-        if (isValidUserDataStructure(parsed)) {
-            return parsed;
-        }
+        if (isValidUserDataStructure(parsed)) return parsed;
 
         console.warn('Browser: структура данных в localStorage некорректна.');
         return null;
@@ -232,7 +248,7 @@ function getUserDataFromLocalStorage() {
 
 /**
  * Сохраняет данные пользователя в localStorage.
- * @param {object} data - Данные для сохранения
+ * @param {object} data
  * @returns {boolean}
  */
 function saveUserDataToLocalStorage(data) {
@@ -245,118 +261,101 @@ function saveUserDataToLocalStorage(data) {
     }
 }
 
+// ========================================
+// VK Storage
+// ========================================
+
 /**
- * Получает данные пользователя из Яндекс Облака.
+ * Получает данные пользователя из VK Storage.
  * @returns {Promise<object|null>}
  */
-async function getUserDataFromYandexCloud() {
-    // Используем кэшированный SDK или пытаемся получить его
-    let ysdk = getCachedYsdk();
-
-    if (!ysdk) {
-        // Попытка инициализации, если ещё не было
-        const isYandex = await checkYandexGamesEnvironment();
-        if (!isYandex) {
-            console.warn('Yandex Games: SDK не доступен (не на Яндекс Играх).');
-            return null;
-        }
-        ysdk = getCachedYsdk();
-    }
-
-    if (!ysdk) {
-        console.warn('Yandex Games: SDK не инициализирован.');
+async function getUserDataFromVKStorage() {
+    if (!isRunningInVK()) {
+        console.warn('VK Storage: не в среде VK.');
         return null;
     }
 
     try {
-        /** @type {Player} */
-        const player = await ysdk.getPlayer();
-        const data = await player.getData(['userData']);
+        const data = await vkBridge.send('VKWebAppStorageGet', {
+            keys: [VK_STORAGE_KEY]
+        });
 
-        if (data && data.userData && isValidUserDataStructure(data.userData)) {
-            return data.userData;
+        if (data.keys) {
+            const stateStr = data.keys.find(k => k.key === VK_STORAGE_KEY)?.value;
+            if (stateStr) {
+                const parsed = JSON.parse(stateStr);
+                if (isValidUserDataStructure(parsed)) {
+                    return parsed;
+                }
+            }
         }
-
         return null;
     } catch (e) {
-        console.error('Yandex Games: ошибка получения данных из облака.', e);
+        console.error('VK Storage: ошибка получения данных.', e);
         return null;
     }
 }
 
 /**
- * Сохраняет данные пользователя в Яндекс Облако.
- * @param {object} data - Данные для сохранения
+ * Сохраняет данные пользователя в VK Storage.
+ * @param {object} data
  * @returns {Promise<boolean>}
  */
-async function saveUserDataToYandexCloud(data) {
-    // Используем кэшированный SDK
-    const ysdk = getCachedYsdk();
-
-    if (!ysdk) {
-        console.warn('Yandex Games: SDK не инициализирован для сохранения.');
+async function saveUserDataToVKStorage(data) {
+    if (!isRunningInVK()) {
+        console.warn('VK Storage: не в среде VK для сохранения.');
         return false;
     }
 
-    let payloadSizeBytes = -1;
-
+    let progressString;
     try {
-        const serializedData = JSON.stringify(data);
-        payloadSizeBytes = new TextEncoder().encode(serializedData).length;
+        progressString = JSON.stringify(data);
     } catch (serializationError) {
-        console.error('Yandex Games: ошибка сериализации данных перед сохранением.', {
-            payloadType: typeof data,
-            payloadSizeBytes,
-            message: serializationError?.message,
-            stack: serializationError?.stack,
-            error: serializationError
-        });
+        console.error('VK Storage: ошибка сериализации данных.', serializationError);
+        return false;
+    }
+
+    // Проверяем лимит VK Storage (4096 байт на ключ)
+    const sizeBytes = new TextEncoder().encode(progressString).length;
+    if (sizeBytes > 4096) {
+        console.warn(`VK Storage: размер данных (${sizeBytes} байт) превышает лимит 4096 байт. Сохраняем только в localStorage.`);
         return false;
     }
 
     try {
-        /** @type {Player} */
-        const player = await ysdk.getPlayer();
-        await player.setData({ userData: data });
-        console.log('Yandex Games: данные успешно сохранены в облако.', { payloadSizeBytes });
-        return true;
+        const result = await vkBridge.send('VKWebAppStorageSet', {
+            key: VK_STORAGE_KEY,
+            value: progressString
+        });
+
+        if (result.result) {
+            console.log('VK Storage: данные успешно сохранены.', { sizeBytes });
+            return true;
+        }
+        return false;
     } catch (e) {
-        const isSdkOrNetworkIssue = !navigator.onLine || /network|timeout|fetch|sdk|getPlayer|setData/i.test(String(e?.message || ''));
-        console.error(
-            isSdkOrNetworkIssue
-                ? 'Yandex Games: ошибка SDK/сети при сохранении данных в облако.'
-                : 'Yandex Games: ошибка данных/валидации при сохранении в облако.',
-            {
-                payloadSizeBytes,
-                online: navigator.onLine,
-                message: e?.message,
-                stack: e?.stack,
-                error: e
-            }
-        );
+        console.error('VK Storage: ошибка сохранения данных.', e);
         return false;
     }
 }
 
+// ========================================
+// Общий контроллер хранилища
+// ========================================
+
 /**
- * Внутренняя функция получения данных из хранилища без ожидания инициализации контроллера.
+ * Внутренняя функция получения данных из хранилища.
  * @returns {Promise<object|null>}
  */
 async function fetchUserDataInternal() {
-    let data = null;
-
-    if (userDataStorage === 'yandexCloud') {
-        data = await getUserDataFromYandexCloud();
-    } else {
-        data = getUserDataFromLocalStorage();
+    if (userDataStorage === 'vkStorage') {
+        return await getUserDataFromVKStorage();
     }
-
-    return data;
+    return getUserDataFromLocalStorage();
 }
 
 /**
  * Получает данные пользователя из соответствующего хранилища.
- * Гарантирует завершение инициализации контроллера.
  * @returns {Promise<object|null>}
  */
 async function getUserData() {
@@ -368,7 +367,7 @@ async function getUserData() {
 
 /**
  * Сохраняет данные пользователя в соответствующее хранилище.
- * @param {object} data - Данные для сохранения
+ * @param {object} data
  * @returns {Promise<boolean>}
  */
 async function saveUserData(data) {
@@ -377,8 +376,8 @@ async function saveUserData(data) {
     // Всегда сохраняем в localStorage как резервную копию
     saveUserDataToLocalStorage(data);
 
-    if (userDataStorage === 'yandexCloud') {
-        return await saveUserDataToYandexCloud(data);
+    if (userDataStorage === 'vkStorage') {
+        return await saveUserDataToVKStorage(data);
     }
 
     return true;
@@ -386,35 +385,29 @@ async function saveUserData(data) {
 
 /**
  * Контроллер хранилища пользовательских данных.
- * Определяет тип хранилища и инициализирует структуру данных.
  * @returns {Promise<object>}
  */
 async function initUserDataStorageController() {
     console.log('=== Инициализация контроллера хранилища данных ===');
 
-    // Шаг 1: Определяем среду запуска (асинхронная проверка с реальной инициализацией SDK)
-    const isYandex = await checkYandexGamesEnvironment();
+    const isVK = await checkVKEnvironment();
 
-    if (isYandex) {
-        console.log('Игра запущена на Яндекс Играх');
-        userDataStorage = 'yandexCloud';
+    if (isVK) {
+        console.log('Игра запущена в VK');
+        userDataStorage = 'vkStorage';
     } else {
-        console.log('Игра запущена не на Яндекс Играх');
+        console.log('Игра запущена не в VK');
         userDataStorage = 'localStorage';
     }
 
     console.log(`Тип хранилища: ${userDataStorage}`);
 
-    // Шаг 2: Проверяем наличие структуры данных
     let userData = await fetchUserDataInternal();
 
     if (!userData || !isValidUserDataStructure(userData)) {
-        // Структура отсутствует - создаём новую
         console.log('Структура данных не найдена в хранилище. Создаю новую структуру...');
-
         userData = createInitialUserDataStructure();
 
-        // Сохраняем созданную структуру
         const saved = await saveUserData(userData);
         if (saved) {
             console.log('Структура данных успешно создана и сохранена.');
@@ -425,7 +418,6 @@ async function initUserDataStorageController() {
         console.log('Созданная структура данных:');
         console.log(JSON.stringify(userData, null, 2));
     } else {
-        // Структура существует - выводим её
         console.log('Структура данных найдена в хранилище:');
         console.log(JSON.stringify(userData, null, 2));
     }
@@ -440,7 +432,6 @@ async function initUserDataStorageController() {
 
 /**
  * Возвращает Promise, который резолвится когда контроллер полностью инициализирован.
- * Используйте эту функцию перед вызовом getUserCardCount, getMaxOpponentCoolness и т.д.
  * @returns {Promise<object>}
  */
 function whenReady() {
@@ -452,7 +443,6 @@ function whenReady() {
         return initPromiseInstance;
     }
 
-    // Если инициализация ещё не началась, запускаем её
     initPromiseInstance = initUserDataStorageController();
     return initPromiseInstance;
 }
@@ -474,12 +464,11 @@ function getStorageType() {
 }
 
 // ========================================
-// Функции для работы с картами (переписаны)
+// Функции для работы с картами
 // ========================================
 
 /**
  * Получает количество карт у пользователя из структуры данных.
- * Карты считаются для cardholder с player = true.
  * @returns {Promise<number>}
  */
 async function getUserCardCount() {
@@ -490,7 +479,6 @@ async function getUserCardCount() {
         return 0;
     }
 
-    // Находим cardholder игрока
     const playerCardholder = userData.cardholders.find(ch => ch.player === true);
 
     if (!playerCardholder) {
@@ -498,7 +486,6 @@ async function getUserCardCount() {
         return 0;
     }
 
-    // Считаем карты, принадлежащие игроку (по cardholder_id)
     const playerCards = userData.cards.filter(card => card.cardholder_id === playerCardholder.id);
     const count = playerCards.length;
 
@@ -507,8 +494,7 @@ async function getUserCardCount() {
 }
 
 /**
- * Получает максимальный уровень крутости (opponent_power) побеждённого оппонента для каждого режима.
- * Находит максимальный opponent_power среди партий, где win = true.
+ * Получает максимальный уровень крутости побеждённого оппонента для каждого режима.
  * @returns {Promise<{standard: number, hard: number, hardcore: number}>}
  */
 async function getMaxOpponentCoolness() {
@@ -520,7 +506,6 @@ async function getMaxOpponentCoolness() {
         return result;
     }
 
-    // Находим все выигранные партии
     const wonParties = userData.parties.filter(party => party.win === true);
 
     if (wonParties.length === 0) {
@@ -528,7 +513,6 @@ async function getMaxOpponentCoolness() {
         return result;
     }
 
-    // Находим максимальный opponent_power среди выигранных партий для каждого режима
     for (const party of wonParties) {
         const mode = party.gameMode || 'standard';
         const power = typeof party.opponent_power === 'number' ? party.opponent_power : 0;
@@ -538,7 +522,6 @@ async function getMaxOpponentCoolness() {
                 result[mode] = power;
             }
         } else {
-            // Если режим неизвестен, считаем его стандартным для совместимости
             if (power > result.standard) {
                 result.standard = power;
             }
@@ -554,8 +537,8 @@ async function getMaxOpponentCoolness() {
 // ========================================
 
 /**
- * Сохраняет колоду карт пользователя в новую структуру данных.
- * @param {Array} cards - Массив карт для сохранения
+ * Сохраняет колоду карт пользователя.
+ * @param {Array} cards
  * @returns {Promise<boolean>}
  */
 async function saveUserDeck(cards) {
@@ -570,11 +553,9 @@ async function saveUserDeck(cards) {
         userData = createInitialUserDataStructure();
     }
 
-    // Находим cardholder игрока
     let playerCardholder = userData.cardholders.find(ch => ch.player === true);
 
     if (!playerCardholder) {
-        // Создаём cardholder для игрока, если его нет
         playerCardholder = {
             id: 1,
             player: true,
@@ -583,11 +564,8 @@ async function saveUserDeck(cards) {
         userData.cardholders.push(playerCardholder);
     }
 
-    // Удаляем старые карты игрока
     userData.cards = userData.cards.filter(card => card.cardholder_id !== playerCardholder.id);
 
-    // Добавляем новые карты с привязкой к cardholder игрока
-    // Генерируем уникальные ID для карт
     let maxCardId = userData.cards.reduce((max, card) => Math.max(max, card.id || 0), 0);
 
     const newCards = cards.map((card, index) => {
@@ -627,10 +605,10 @@ async function saveUserDeck(cards) {
 
 /**
  * Записывает результат партии.
- * @param {number} opponentId - ID оппонента
- * @param {boolean} win - Победа или поражение
- * @param {number} opponentPower - Уровень крутости оппонента
- * @param {string} gameMode - Режим игры ('standard', 'hard', 'hardcore')
+ * @param {number} opponentId
+ * @param {boolean} win
+ * @param {number} opponentPower
+ * @param {string} gameMode
  * @returns {Promise<boolean>}
  */
 async function recordPartyResult(opponentId, win, opponentPower, gameMode = 'standard') {
@@ -640,7 +618,6 @@ async function recordPartyResult(opponentId, win, opponentPower, gameMode = 'sta
         userData = createInitialUserDataStructure();
     }
 
-    // Генерируем ID для новой партии
     const maxPartyId = userData.parties.reduce((max, party) => Math.max(max, party.id || 0), 0);
 
     const newParty = {
@@ -665,7 +642,7 @@ async function recordPartyResult(opponentId, win, opponentPower, gameMode = 'sta
 
 /**
  * Добавляет карту в колоду пользователя.
- * @param {object} cardData - Данные карты
+ * @param {object} cardData
  * @returns {Promise<boolean>}
  */
 async function addCardToUserDeck(cardData) {
@@ -675,7 +652,6 @@ async function addCardToUserDeck(cardData) {
         userData = createInitialUserDataStructure();
     }
 
-    // Находим cardholder игрока
     let playerCardholder = userData.cardholders.find(ch => ch.player === true);
 
     if (!playerCardholder) {
@@ -687,7 +663,6 @@ async function addCardToUserDeck(cardData) {
         userData.cardholders.push(playerCardholder);
     }
 
-    // Генерируем ID для новой карты
     const maxCardId = userData.cards.reduce((max, card) => Math.max(max, card.id || 0), 0);
 
     const newCard = {
@@ -724,7 +699,6 @@ async function addCardToUserDeck(cardData) {
 
 /**
  * Очищает кэш данных пользователя.
- * Полезно для принудительного перечитывания из хранилища.
  */
 function clearUserDataCache() {
     cachedUserData = null;
@@ -737,15 +711,12 @@ function clearUserDataCache() {
 
 /**
  * Функция технической замены карты на уровень выше.
- * Использует существующую логику генерации карт через cardRenderer.generateCardParams.
- *
- * @param {number} oldCardId - ID заменяемой карты
- * @param {object} userData - Объект данных пользователя
- * @param {object} cardGenerator - Ссылка на модуль генерации (cardRenderer)
- * @returns {object} - Результат операции
+ * @param {number} oldCardId
+ * @param {object} userData
+ * @param {object} cardGenerator
+ * @returns {object}
  */
 function processCardLevelUp(oldCardId, userData, cardGenerator) {
-    // Шаг 1: Валидация и подготовка
     if (!userData || !Array.isArray(userData.cards)) {
         return { status: 'error', message: 'Некорректная структура userData' };
     }
@@ -762,14 +733,12 @@ function processCardLevelUp(oldCardId, userData, cardGenerator) {
     const oldCard = userData.cards[cardIndex];
     const currentLevel = parseInt(oldCard.cardLevel, 10);
 
-    // Проверка максимального уровня (0, 1, 2 - три уровня, максимум 2)
     if (currentLevel >= 2) {
         return { status: 'skipped', message: 'Карта уже максимального уровня' };
     }
 
     const targetLevel = currentLevel + 1;
 
-    // Шаг 2: Генерация новых параметров карты через существующую функцию
     let newStats;
     try {
         newStats = cardGenerator.generateCardParams(oldCard.cardTypeId, targetLevel);
@@ -780,11 +749,9 @@ function processCardLevelUp(oldCardId, userData, cardGenerator) {
         };
     }
 
-    // Шаг 3: Генерация нового ID
     const maxId = userData.cards.reduce((max, c) => (c.id > max ? c.id : max), 0);
     const newId = maxId + 1;
 
-    // Шаг 4: Сборка объекта новой карты
     const newCard = {
         id: newId,
         cardholder_id: oldCard.cardholder_id,
@@ -792,14 +759,10 @@ function processCardLevelUp(oldCardId, userData, cardGenerator) {
         cardLevel: targetLevel,
         ownership: 'player',
         inHand: false,
-
-        // Данные из генератора
         attackLevel: newStats.attackLevel,
         attackType: newStats.attackType,
         mechanicalDefense: newStats.mechanicalDefense,
         electricalDefense: newStats.electricalDefense,
-
-        // Стрелки из генератора
         arrowTopLeft: newStats.arrowTopLeft,
         arrowTop: newStats.arrowTop,
         arrowTopRight: newStats.arrowTopRight,
@@ -810,11 +773,9 @@ function processCardLevelUp(oldCardId, userData, cardGenerator) {
         arrowLeft: newStats.arrowLeft
     };
 
-    // Шаг 5: Атомарная замена в хранилище
     userData.cards.splice(cardIndex, 1);
     userData.cards.push(newCard);
 
-    // Шаг 6: Возврат данных для оркестратора
     return {
         status: 'success',
         oldCardId: oldCardId,
@@ -824,11 +785,9 @@ function processCardLevelUp(oldCardId, userData, cardGenerator) {
 
 /**
  * Асинхронная обёртка для processCardLevelUp с автоматическим сохранением.
- * Получает userData из хранилища, выполняет операцию и сохраняет результат.
- *
- * @param {number} oldCardId - ID заменяемой карты
- * @param {object} cardGenerator - Ссылка на модуль генерации (cardRenderer)
- * @returns {Promise<object>} - Результат операции
+ * @param {number} oldCardId
+ * @param {object} cardGenerator
+ * @returns {Promise<object>}
  */
 async function processCardLevelUpAndSave(oldCardId, cardGenerator) {
     const userData = await getUserData();
@@ -847,24 +806,168 @@ async function processCardLevelUpAndSave(oldCardId, cardGenerator) {
     return result;
 }
 
-// Экспорт в глобальную область видимости
+// ========================================
+// VK Bridge: Реклама
+// ========================================
+
+/**
+ * Показывает полноэкранную рекламу (interstitial) через VK Bridge.
+ * @param {object} callbacks - { onClose: function, onError: function }
+ */
+function showInterstitialAd(callbacks) {
+    if (!isRunningInVK()) {
+        if (callbacks?.onClose) callbacks.onClose(false);
+        return;
+    }
+
+    vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'interstitial' })
+        .then((data) => {
+            if (callbacks?.onClose) callbacks.onClose(data.result);
+        })
+        .catch((error) => {
+            console.log('VK Ads: Ошибка показа interstitial:', error);
+            if (callbacks?.onError) {
+                callbacks.onError(error);
+            } else if (callbacks?.onClose) {
+                // Продолжаем игру даже при ошибке
+                callbacks.onClose(false);
+            }
+        });
+}
+
+/**
+ * Показывает рекламу за вознаграждение (rewarded) через VK Bridge.
+ * @param {object} callbacks - { onRewarded: function, onClose: function, onError: function }
+ */
+function showRewardedAd(callbacks) {
+    if (!isRunningInVK()) {
+        // Не в VK — выдаём награду сразу
+        if (callbacks?.onRewarded) callbacks.onRewarded();
+        if (callbacks?.onClose) callbacks.onClose();
+        return;
+    }
+
+    vkBridge.send('VKWebAppShowNativeAds', { ad_format: 'reward' })
+        .then((data) => {
+            if (data.result) {
+                if (callbacks?.onRewarded) callbacks.onRewarded();
+            }
+            if (callbacks?.onClose) callbacks.onClose();
+        })
+        .catch((error) => {
+            console.log('VK Ads: Ошибка показа rewarded:', error);
+            if (callbacks?.onError) {
+                callbacks.onError(error);
+            } else if (callbacks?.onClose) {
+                callbacks.onClose();
+            }
+        });
+}
+
+// ========================================
+// VK Bridge: Покупки (IAP)
+// ========================================
+
+/**
+ * Выполняет покупку товара через VKWebAppShowOrderBox.
+ * @param {string} itemId - ID товара
+ * @returns {Promise<{success: boolean, orderId?: string}>}
+ */
+async function purchaseItem(itemId) {
+    if (!isRunningInVK() || isRunningInOK()) {
+        throw new Error('Покупки недоступны на данной платформе');
+    }
+
+    const data = await vkBridge.send('VKWebAppShowOrderBox', {
+        type: 'item',
+        item: itemId
+    });
+
+    if (data.success) {
+        return { success: true, orderId: data.order_id };
+    }
+
+    throw new Error('Покупка не была завершена');
+}
+
+// ========================================
+// VK Bridge: Полноэкранный режим
+// ========================================
+
+/**
+ * Запрашивает полноэкранный режим.
+ * На мобильных — через VKWebAppSetViewSettings, на десктопе — Fullscreen API.
+ */
+function requestFullscreen() {
+    if (isRunningInVK()) {
+        vkBridge.send('VKWebAppSetViewSettings', {
+            status_bar_style: 'light',
+            fullscreen: true
+        })
+            .then(() => console.log('VK Bridge: Fullscreen activated'))
+            .catch(e => {
+                console.warn('VK Bridge: Fullscreen request failed, trying Fullscreen API', e);
+                requestBrowserFullscreen();
+            });
+    } else {
+        requestBrowserFullscreen();
+    }
+}
+
+/**
+ * Запрашивает полноэкранный режим через стандартное Fullscreen API браузера.
+ */
+function requestBrowserFullscreen() {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(e => console.warn('Fullscreen API failed:', e));
+    } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+    }
+}
+
+// ========================================
+// GameplayAPI заглушки (VK не имеет аналога)
+// ========================================
+
+const GAMEPLAY_ACTIVE_KEY = 'technomaster.gameplay.active';
+
+/**
+ * Запускает сессию геймплея (заглушка для обратной совместимости).
+ */
+function startGameplay() {
+    const isActive = sessionStorage.getItem(GAMEPLAY_ACTIVE_KEY) === '1';
+    if (!isActive) {
+        console.log('Gameplay: start');
+        sessionStorage.setItem(GAMEPLAY_ACTIVE_KEY, '1');
+    }
+}
+
+/**
+ * Останавливает сессию геймплея (заглушка для обратной совместимости).
+ */
+function stopGameplay() {
+    console.log('Gameplay: stop');
+    sessionStorage.removeItem(GAMEPLAY_ACTIVE_KEY);
+}
+
+// ========================================
+// Блокировки UI
+// ========================================
+
 /**
  * Инициализирует глобальные блокировки UI (ПКМ, выделение, перетаскивание).
  */
 function initGlobalUIBlocking() {
-    // Блокировка контекстного меню (ПКМ и долгий тап на мобильных)
     window.addEventListener('contextmenu', (e) => {
         e.preventDefault();
     }, false);
 
-    // Блокировка выделения текста (дополнительно к CSS)
     window.addEventListener('selectstart', (e) => {
         e.preventDefault();
     }, false);
 
-    // Блокировка перетаскивания изображений
     window.addEventListener('dragstart', (e) => {
-        // Разрешаем перетаскивание только для игровых карт
         if (e.target.closest('.player-hand-card') || e.target.closest('.draggable-card')) {
             return;
         }
@@ -874,43 +977,14 @@ function initGlobalUIBlocking() {
     }, false);
 }
 
-const GAMEPLAY_ACTIVE_KEY = 'technomaster.gameplay.active';
-
-/**
- * Запускает сессию GameplayAPI, если она еще не активна.
- */
-function startGameplay() {
-    const isYandex = isRunningInYandexGames();
-    const ysdk = getCachedYsdk();
-
-    if (isYandex && ysdk && ysdk.features && ysdk.features.GameplayAPI) {
-        const isActive = sessionStorage.getItem(GAMEPLAY_ACTIVE_KEY) === '1';
-        if (!isActive) {
-            console.log('Yandex Games: GameplayAPI.start()');
-            ysdk.features.GameplayAPI.start();
-            sessionStorage.setItem(GAMEPLAY_ACTIVE_KEY, '1');
-        }
-    }
-}
-
-/**
- * Останавливает сессию GameplayAPI.
- */
-function stopGameplay() {
-    const isYandex = isRunningInYandexGames();
-    const ysdk = getCachedYsdk();
-
-    if (isYandex && ysdk && ysdk.features && ysdk.features.GameplayAPI) {
-        console.log('Yandex Games: GameplayAPI.stop()');
-        ysdk.features.GameplayAPI.stop();
-        sessionStorage.removeItem(GAMEPLAY_ACTIVE_KEY);
-    }
-}
-
 // Инициализация блокировок при загрузке
 if (typeof window !== 'undefined') {
     initGlobalUIBlocking();
 }
+
+// ========================================
+// Экспорт в глобальную область видимости
+// ========================================
 
 window.userCards = {
     // Основные функции
@@ -932,22 +1006,36 @@ window.userCards = {
     processCardLevelUp,
     processCardLevelUpAndSave,
 
-    // GameplayAPI
+    // GameplayAPI (заглушки для обратной совместимости)
     startGameplay,
     stopGameplay,
 
+    // VK Bridge: Реклама
+    showInterstitialAd,
+    showRewardedAd,
+
+    // VK Bridge: Покупки
+    purchaseItem,
+
+    // VK Bridge: Полноэкранный режим
+    requestFullscreen,
+
     // Утилиты
-    checkYandexGamesEnvironment,
-    isRunningInYandexGames,
-    getCachedYsdk,
+    checkVKEnvironment,
+    isRunningInVK,
+    isRunningInOK,
     getStorageType,
     createEmptyUserDataStructure,
-    createInitialUserDataStructure
+    createInitialUserDataStructure,
+
+    // Обратная совместимость (deprecated)
+    isRunningInYandexGames,
+    getCachedYsdk,
+    checkYandexGamesEnvironment: checkVKEnvironment
 };
 
 // Автоматическая инициализация при загрузке скрипта
 if (typeof document !== 'undefined') {
-    // Запускаем инициализацию и сохраняем Promise
     const startInit = () => {
         initPromiseInstance = initUserDataStorageController();
     };
@@ -955,7 +1043,6 @@ if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', startInit);
     } else {
-        // DOM уже загружен
         startInit();
     }
 }
