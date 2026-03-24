@@ -946,6 +946,37 @@ function requestBrowserFullscreen() {
     }
 }
 
+/**
+ * Выходит из полноэкранного режима.
+ * На мобильных — через VKWebAppSetViewSettings, на десктопе — Fullscreen API.
+ */
+function exitFullscreen() {
+    if (isRunningInVK()) {
+        vkBridge.send('VKWebAppSetViewSettings', {
+            status_bar_style: 'dark',
+            fullscreen: false
+        })
+            .then(() => console.log('VK Bridge: Fullscreen deactivated'))
+            .catch(e => {
+                console.warn('VK Bridge: Exit fullscreen failed, trying Fullscreen API', e);
+                exitBrowserFullscreen();
+            });
+    } else {
+        exitBrowserFullscreen();
+    }
+}
+
+/**
+ * Выходит из полноэкранного режима через стандартное Fullscreen API браузера.
+ */
+function exitBrowserFullscreen() {
+    if (document.exitFullscreen) {
+        document.exitFullscreen().catch(e => console.warn('Exit Fullscreen API failed:', e));
+    } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+    }
+}
+
 // ========================================
 // GameplayAPI заглушки (VK не имеет аналога)
 // ========================================
@@ -1039,6 +1070,7 @@ window.userCards = {
 
     // VK Bridge: Полноэкранный режим
     requestFullscreen,
+    exitFullscreen,
 
     // Утилиты
     checkVKEnvironment,

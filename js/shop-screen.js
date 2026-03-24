@@ -291,6 +291,11 @@ function openProductModal(blister) {
     spinner.classList.add('hidden');
 
     modal.classList.remove('hidden');
+
+    // Выйти из полноэкранного режима при открытии модального окна
+    if (window.userCards?.exitFullscreen) {
+        window.userCards.exitFullscreen();
+    }
 }
 
 /**
@@ -300,6 +305,11 @@ function closeProductModal() {
     const modal = document.getElementById('shopProductModal');
     modal.classList.add('hidden');
     shopScreenState.selectedBlister = null;
+
+    // Вернуться в полноэкранный режим при закрытии модального окна
+    if (window.userCards?.requestFullscreen) {
+        window.userCards.requestFullscreen();
+    }
 }
 
 /**
