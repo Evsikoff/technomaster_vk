@@ -627,6 +627,11 @@ async function initShopScreen() {
             await window.userCards.whenReady();
         }
 
+        // Активируем полноэкранный режим при входе в магазин
+        if (window.userCards?.requestFullscreen) {
+            window.userCards.requestFullscreen();
+        }
+
         // Инициализируем рендерер карт и БД параллельно
         var results = await Promise.all([
             initShopDatabase(),
