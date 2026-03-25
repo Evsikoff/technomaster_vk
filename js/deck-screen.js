@@ -536,6 +536,13 @@ async function initDeckScreen() {
         // Привязываем обработчики
         setupDeckEventHandlers();
 
+        // На Одноклассниках возвращаемся в полноэкранный режим при входе на экран колоды
+        // (после выхода из магазина, где fullscreen был отключён для стабильной рекламы).
+        if (window.userCards.isRunningInOK()) {
+            console.log('DeckScreen: Платформа OK — возврат в полноэкранный режим.');
+            window.userCards?.requestFullscreen();
+        }
+
         console.log('DeckScreen: Инициализация завершена.');
 
         if (loadingScreen) {

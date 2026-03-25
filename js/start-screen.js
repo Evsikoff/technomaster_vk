@@ -433,10 +433,17 @@ async function initStartScreen() {
 
         // Автоматический переход в полноэкранный режим при первом клике
         if (window.userCards?.requestFullscreen) {
-            window.addEventListener('click', () => {
-                console.log('[StartScreen] Первый клик: запрос полноэкранного режима');
+            // На Одноклассниках — сразу возвращаемся в fullscreen (после магазина fullscreen был отключён).
+            // Fullscreen API требует user gesture, но VKWebAppSetViewSettings работает без него.
+            if (window.userCards.isRunningInOK()) {
+                console.log('[StartScreen] Платформа OK — возврат в полноэкранный режим.');
                 window.userCards.requestFullscreen();
-            }, { once: true });
+            } else {
+                window.addEventListener('click', () => {
+                    console.log('[StartScreen] Первый клик: запрос полноэкранного режима');
+                    window.userCards.requestFullscreen();
+                }, { once: true });
+            }
         }
 
         // Убираем загрузочный экран перед снятием блокировщика
