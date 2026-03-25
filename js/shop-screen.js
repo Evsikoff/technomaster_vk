@@ -296,25 +296,29 @@ function openProductModal(blister) {
     // Выйти из полноэкранного режима при открытии модального окна.
     // Браузерный exitFullscreen работает только если уже в fullscreen.
     // Если нет — используем жест текущего клика чтобы войти и сразу выйти.
-    console.log('[ShopScreen] openProductModal("' + blister.blister_name + '"): fsElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null'));
-    if (document.fullscreenElement || document.webkitFullscreenElement) {
-        console.log('[ShopScreen] openProductModal: в fullscreen — выходим');
-        window.userCards?.exitFullscreen();
-    } else if (window.userCards?.requestFullscreen && window.userCards?.exitFullscreen) {
-        console.log('[ShopScreen] openProductModal: не в fullscreen — входим через жест, затем сразу выйдем');
-        const pendingExit = () => {
-            document.removeEventListener('fullscreenchange', pendingExit);
-            document.removeEventListener('webkitfullscreenchange', pendingExit);
-            shopScreenState.pendingFullscreenExit = null;
-            if (document.fullscreenElement || document.webkitFullscreenElement) {
-                console.log('[ShopScreen] fullscreenchange: вошли — выходим');
-                window.userCards.exitFullscreen();
-            }
-        };
-        shopScreenState.pendingFullscreenExit = pendingExit;
-        document.addEventListener('fullscreenchange', pendingExit);
-        document.addEventListener('webkitfullscreenchange', pendingExit);
-        window.userCards.requestFullscreen();
+    // ПРИМЕЧАНИЕ: На Одноклассниках пропускаем этот хак, так как там нет IAP
+    // и лишние манипуляции с Fullscreen могут мешать рекламе.
+    if (!window.userCards.isRunningInOK()) {
+        console.log('[ShopScreen] openProductModal("' + blister.blister_name + '"): fsElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null'));
+        if (document.fullscreenElement || document.webkitFullscreenElement) {
+            console.log('[ShopScreen] openProductModal: в fullscreen — выходим');
+            window.userCards?.exitFullscreen();
+        } else if (window.userCards?.requestFullscreen && window.userCards?.exitFullscreen) {
+            console.log('[ShopScreen] openProductModal: не в fullscreen — входим через жест, затем сразу выйдем');
+            const pendingExit = () => {
+                document.removeEventListener('fullscreenchange', pendingExit);
+                document.removeEventListener('webkitfullscreenchange', pendingExit);
+                shopScreenState.pendingFullscreenExit = null;
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    console.log('[ShopScreen] fullscreenchange: вошли — выходим');
+                    window.userCards.exitFullscreen();
+                }
+            };
+            shopScreenState.pendingFullscreenExit = pendingExit;
+            document.addEventListener('fullscreenchange', pendingExit);
+            document.addEventListener('webkitfullscreenchange', pendingExit);
+            window.userCards.requestFullscreen();
+        }
     }
 }
 
@@ -383,8 +387,9 @@ function handleCtaClick() {
 /**
  * Сценарий: Полноэкранная реклама (price == -1)
  * @param {object} blister
+ * @param {number} attempt
  */
-function handleInterstitialAd(blister) {
+async function handleInterstitialAd(blister, attempt = 1) {
     if (!window.userCards.isRunningInVK()) {
         console.log('ShopScreen: VK недоступен, выдаём блистер без рекламы.');
         processBlisterPurchase(blister);
@@ -393,15 +398,34 @@ function handleInterstitialAd(blister) {
 
     setModalLoading(true);
 
+    // На ОК сначала проверяем наличие рекламы
+    if (window.userCards.isRunningInOK()) {
+        const canShow = await window.userCards.checkNativeAds('interstitial');
+        if (!canShow && attempt === 1) {
+            console.log('ShopScreen: Реклама не готова (check), пробуем подождать...');
+            setTimeout(() => handleInterstitialAd(blister, 2), 1500);
+            return;
+        }
+    }
+
     window.userCards.showInterstitialAd({
         onClose: function(wasShown) {
             setModalLoading(false);
             processBlisterPurchase(blister);
         },
         onError: function(error) {
+            console.error('ShopScreen: Ошибка рекламы (попытка ' + attempt + '):', error);
+
+            // Если это клиентская ошибка на ОК и первая попытка — пробуем ещё раз
+            if (window.userCards.isRunningInOK() && attempt === 1 && error?.error_type === 'client_error') {
+                console.log('ShopScreen: Повторная попытка показа через 1.5 сек...');
+                setTimeout(() => handleInterstitialAd(blister, 2), 1500);
+                return;
+            }
+
             setModalLoading(false);
-            console.error('ShopScreen: Ошибка рекламы:', error);
-            alert('Не удалось загрузить рекламу. Попробуйте позже.');
+            // Если реклама так и не загрузилась, всё равно отдаём блистер (по требованию заказчика)
+            processBlisterPurchase(blister);
         }
     });
 }
