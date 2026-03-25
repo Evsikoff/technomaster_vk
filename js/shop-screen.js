@@ -339,9 +339,12 @@ function closeProductModal() {
     }
 
     // Вернуться в полноэкранный режим при закрытии модального окна
-    console.log('[ShopScreen] closeProductModal(): запрос полноэкранного режима');
-    if (window.userCards?.requestFullscreen) {
-        window.userCards.requestFullscreen();
+    // ПРИМЕЧАНИЕ: На Одноклассниках остаёмся в обычном режиме для стабильной рекламы.
+    if (!window.userCards.isRunningInOK()) {
+        console.log('[ShopScreen] closeProductModal(): запрос полноэкранного режима');
+        if (window.userCards?.requestFullscreen) {
+            window.userCards.requestFullscreen();
+        }
     }
 }
 
@@ -703,6 +706,13 @@ async function initShopScreen() {
 
         // Привязываем обработчики
         setupShopEventHandlers();
+
+        // На Одноклассниках выходим из полноэкранного режима при входе в магазин,
+        // так как реклама (особенно Interstitial) там нестабильно работает в fullscreen.
+        if (window.userCards.isRunningInOK()) {
+            console.log('ShopScreen: Платформа OK — выход из полноэкранного режима для стабильной рекламы.');
+            window.userCards?.exitFullscreen();
+        }
 
         console.log('ShopScreen: Инициализация завершена. Блистеров: ' + shopScreenState.blisters.length);
     } catch (error) {
