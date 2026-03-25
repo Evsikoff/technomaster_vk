@@ -1291,6 +1291,13 @@ img {
         transform: none;
         margin-top: 12px;
     }
+
+    .header-fullscreen-btn {
+        position: static;
+        transform: none;
+        margin-top: 12px;
+        padding: 8px 14px;
+    }
 }
 
 /* Скроллбар для колоды */
@@ -1562,6 +1569,50 @@ img {
 .party-guide-button:hover {
     background: rgba(255, 215, 0, 0.2);
     transform: translateY(-1px);
+}
+
+/* Кнопка полноэкранного режима */
+.fullscreen-toggle-btn {
+    width: 100%;
+    border: 1px solid rgba(255, 215, 0, 0.45);
+    border-radius: 8px;
+    padding: 6px 4px;
+    font-size: clamp(8px, 0.85vw, 11px);
+    font-weight: 700;
+    color: #ffe89a;
+    background: rgba(10, 16, 31, 0.75);
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.fullscreen-toggle-btn:hover {
+    background: rgba(255, 215, 0, 0.2);
+    transform: translateY(-1px);
+}
+
+/* Кнопка полноэкранного режима в шапке (hand-setup, и т.д.) */
+.header-fullscreen-btn {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: clamp(10px, 1.4vw, 14px);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.header-fullscreen-btn:hover {
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    transform: translateY(-50%) translateX(2px);
 }
 
 /* Секция игрового поля (центр) — расширяется на доступное пространство */

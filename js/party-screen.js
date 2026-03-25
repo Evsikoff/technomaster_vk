@@ -1406,6 +1406,36 @@ async function initPartyScreen() {
         });
     }
 
+    // Кнопка полноэкранного режима
+    const fullscreenBtn = document.getElementById('fullscreenToggleBtn');
+    if (fullscreenBtn) {
+        let isFullscreen = false;
+
+        const updateFullscreenIcon = (fs) => {
+            isFullscreen = fs;
+            fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
+            fullscreenBtn.title = isFullscreen ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим';
+            fullscreenBtn.setAttribute('aria-label', fullscreenBtn.title);
+        };
+
+        fullscreenBtn.addEventListener('click', () => {
+            if (isFullscreen) {
+                window.userCards.exitFullscreen();
+                updateFullscreenIcon(false);
+            } else {
+                window.userCards.requestFullscreen();
+                updateFullscreenIcon(true);
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            updateFullscreenIcon(!!document.fullscreenElement);
+        });
+        document.addEventListener('webkitfullscreenchange', () => {
+            updateFullscreenIcon(!!document.webkitFullscreenElement);
+        });
+    }
+
     try {
         // Получаем данные партии
         const payload = getPartyPayload();
