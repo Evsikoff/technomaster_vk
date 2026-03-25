@@ -831,6 +831,25 @@ async function processCardLevelUpAndSave(oldCardId, cardGenerator) {
 // ========================================
 
 /**
+ * Проверяет наличие рекламы через VKWebAppCheckNativeAds.
+ * @param {string} ad_format - 'interstitial' | 'reward'
+ * @returns {Promise<boolean>}
+ */
+async function checkNativeAds(ad_format) {
+    if (!isRunningInVK()) {
+        return true;
+    }
+
+    try {
+        const data = await vkBridge.send('VKWebAppCheckNativeAds', { ad_format });
+        return !!data.result;
+    } catch (error) {
+        console.log('VK Ads: Ошибка проверки рекламы:', error);
+        return false;
+    }
+}
+
+/**
  * Показывает полноэкранную рекламу (interstitial) через VK Bridge.
  * @param {object} callbacks - { onClose: function, onError: function }
  */
@@ -1088,6 +1107,7 @@ window.userCards = {
     checkVKEnvironment,
     isRunningInVK,
     isRunningInOK,
+    checkNativeAds,
     getStorageType,
     createEmptyUserDataStructure,
     createInitialUserDataStructure,
