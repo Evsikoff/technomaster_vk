@@ -82,7 +82,7 @@ function getPriceBtnClass(price) {
  */
 function getCtaLabel(price) {
     const type = getTransactionType(price);
-    if (type === TRANSACTION_TYPE.INTERSTITIAL) return 'Смотреть рекламу';
+    if (type === TRANSACTION_TYPE.INTERSTITIAL) return 'Получить бесплатно';
     if (type === TRANSACTION_TYPE.REWARDED) return 'Смотреть видео';
     return 'Купить за ' + price + ' <span class="shop-currency-symbol" aria-label="голосов">Гол.</span>';
 }
@@ -379,7 +379,7 @@ function handleCtaClick() {
     const type = getTransactionType(blister.blister_price);
 
     if (type === TRANSACTION_TYPE.INTERSTITIAL) {
-        handleInterstitialAd(blister);
+        processBlisterPurchase(blister);
     } else if (type === TRANSACTION_TYPE.REWARDED) {
         handleRewardedVideo(blister);
     } else {
