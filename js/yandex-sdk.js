@@ -296,6 +296,46 @@ async function getUserDataFromVKStorage() {
     }
 
     try {
+        // Сначала пытаемся получить количество фрагментов
+        const countData = await vkBridge.send('VKWebAppStorageGet', {
+            keys: [VK_STORAGE_KEY + '_count']
+        });
+
+        let chunksCountStr = countData.keys.find(k => k.key === VK_STORAGE_KEY + '_count')?.value;
+
+        if (chunksCountStr && chunksCountStr !== '') {
+            const count = parseInt(chunksCountStr, 10);
+            if (count > 0) {
+                let fullString = '';
+                // VKWebAppStorageGet позволяет запрашивать до 100 ключей за раз
+                for (let i = 0; i < count; i += 100) {
+                    const keysToFetch = [];
+                    for (let j = i; j < i + 100 && j < count; j++) {
+                        keysToFetch.push(VK_STORAGE_KEY + '_' + j);
+                    }
+
+                    const chunksData = await vkBridge.send('VKWebAppStorageGet', {
+                        keys: keysToFetch
+                    });
+
+                    const chunksMap = new Map();
+                    chunksData.keys.forEach(k => chunksMap.set(k.key, k.value));
+
+                    for (let j = i; j < i + 100 && j < count; j++) {
+                        fullString += chunksMap.get(VK_STORAGE_KEY + '_' + j) || '';
+                    }
+                }
+
+                if (fullString) {
+                    const parsed = JSON.parse(fullString);
+                    if (isValidUserDataStructure(parsed)) {
+                        return parsed;
+                    }
+                }
+            }
+        }
+
+        // Запасной вариант: попытка прочитать старый единый ключ
         const data = await vkBridge.send('VKWebAppStorageGet', {
             keys: [VK_STORAGE_KEY]
         });
@@ -335,24 +375,54 @@ async function saveUserDataToVKStorage(data) {
         return false;
     }
 
-    // Проверяем лимит VK Storage (4096 байт на ключ)
-    const sizeBytes = new TextEncoder().encode(progressString).length;
-    if (sizeBytes > 4096) {
-        console.warn(`VK Storage: размер данных (${sizeBytes} байт) превышает лимит 4096 байт. Сохраняем только в localStorage.`);
-        return false;
+    // Разбиваем строку на фрагменты по 1000 символов.
+    // Каждый символ в UTF-8 занимает до 4 байт, поэтому фрагмент в 1000 символов
+    // гарантированно не превысит лимит в 4096 байт на ключ.
+    const chunkLength = 1000;
+    const chunks = [];
+    for (let i = 0; i < progressString.length; i += chunkLength) {
+        chunks.push(progressString.substring(i, i + chunkLength));
     }
 
     try {
-        const result = await vkBridge.send('VKWebAppStorageSet', {
-            key: VK_STORAGE_KEY,
-            value: progressString
+        // Получаем предыдущее количество фрагментов, чтобы очистить лишние, если новый размер меньше
+        let previousCount = 0;
+        try {
+            const countData = await vkBridge.send('VKWebAppStorageGet', {
+                keys: [VK_STORAGE_KEY + '_count']
+            });
+            const prevCountStr = countData.keys.find(k => k.key === VK_STORAGE_KEY + '_count')?.value;
+            if (prevCountStr && prevCountStr !== '') {
+                previousCount = parseInt(prevCountStr, 10);
+            }
+        } catch (err) {
+            console.log('VK Storage: не удалось получить предыдущее количество фрагментов.');
+        }
+
+        // Сохраняем количество фрагментов
+        await vkBridge.send('VKWebAppStorageSet', {
+            key: VK_STORAGE_KEY + '_count',
+            value: chunks.length.toString()
         });
 
-        if (result.result) {
-            console.log('VK Storage: данные успешно сохранены.', { sizeBytes });
-            return true;
+        // Сохраняем каждый фрагмент
+        for (let i = 0; i < chunks.length; i++) {
+            await vkBridge.send('VKWebAppStorageSet', {
+                key: VK_STORAGE_KEY + '_' + i,
+                value: chunks[i]
+            });
         }
-        return false;
+
+        // Очищаем старые фрагменты, если их было больше
+        for (let i = chunks.length; i < previousCount; i++) {
+            await vkBridge.send('VKWebAppStorageSet', {
+                key: VK_STORAGE_KEY + '_' + i,
+                value: ''
+            });
+        }
+
+        console.log(`VK Storage: данные успешно сохранены в ${chunks.length} фрагментах.`);
+        return true;
     } catch (e) {
         console.error('VK Storage: ошибка сохранения данных.', e);
         return false;
